@@ -1,0 +1,53 @@
+{
+  "name": "python-importer",
+  "displayName": "Python Importer",
+  "description": "自动检测__init__.py的__all__导出的函数, 并且可以直接以相对路径导入",
+  "version": "0.0.2",
+  "publisher": "yuelili",
+  "engines": {
+    "vscode": "^1.93.0"
+  },
+  "activationEvents": [
+    "onCommand:python-importer.refresh"
+  ],
+  "icon": "media/logo.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Yuelioi/vscode-extention-python-auto-importer"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "python-importer.refresh",
+        "title": "Python Importer Refresh"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:build": "vsce package",
+    "vscode:prepublish": "pnpm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "pnpm run compile && pnpm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "20.x",
+    "@types/vscode": "^1.93.0",
+    "@typescript-eslint/eslint-plugin": "^8.17.0",
+    "@typescript-eslint/parser": "^8.17.0",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.4.1",
+    "eslint": "^9.16.0",
+    "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "toml": "^3.0.0"
+  }
+}
