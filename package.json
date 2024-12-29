@@ -1,14 +1,14 @@
 {
   "name": "python-importer",
   "displayName": "Python Importer",
-  "description": "自动检测__init__.py的__all__导出的函数, 并且可以直接以相对路径导入",
-  "version": "0.0.2",
+  "description": "自动检测__init__.py的__all__导出的函数, 并且可以直接以绝对/相对路径导入",
+  "version": "0.0.3",
   "publisher": "yuelili",
   "engines": {
     "vscode": "^1.93.0"
   },
   "activationEvents": [
-    "onCommand:python-importer.refresh"
+    "onStartupFinished"
   ],
   "icon": "media/logo.png",
   "repository": {

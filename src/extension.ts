@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as path from "path";
 
 interface ImportConfig {
-  src: string;
+  relative: boolean;
   excludes: string[];
 }
 
@@ -19,13 +19,12 @@ interface CompletionItem {
 
 let projectConfig: ProjectConfig = {
   import: {
-    src: "src",
+    relative: false,
     excludes: ["test"],
   },
 };
 
 let workspaceFolder = "";
-let projectFolder = "";
 
 const functionStore: Map<string, string[]> = new Map();
 const completionDictionary: CompletionItem[] = [];
@@ -102,15 +101,15 @@ function updateFunctionStore(filePath: string): boolean {
 
 // 重置工作区
 function refreshWorkspace() {
-  const { src, excludes } = projectConfig.import;
-  const rootDir = path.join(workspaceFolder, src);
+  loadProjectConfig();
+  const { excludes } = projectConfig.import;
 
   const traverseDirectory = (dir: string) => {
     fs.readdirSync(dir).forEach((file) => {
       const filePath = path.join(dir, file);
       const stat = fs.statSync(filePath);
 
-      if (stat.isDirectory() && !excludes.includes(file)) {
+      if (stat.isDirectory() && !excludes.includes(file) && !file.startsWith(".") && !file.startsWith("_")) {
         traverseDirectory(filePath);
       } else if (file.endsWith("__init__.py")) {
         updateFunctionStore(filePath);
@@ -118,10 +117,10 @@ function refreshWorkspace() {
     });
   };
 
-  if (fs.existsSync(rootDir)) {
-    traverseDirectory(rootDir);
+  if (fs.existsSync(workspaceFolder)) {
+    traverseDirectory(workspaceFolder);
   } else {
-    console.error(`根目录不存在: ${rootDir}`);
+    console.error(`根目录不存在: ${workspaceFolder}`);
   }
 
   // 重构字典
@@ -133,9 +132,7 @@ function rebuildCompletionDictionary() {
   functionStore.forEach((functions, filePath) => {
     functions.forEach((func) => {
       if (!completionDictionary.some((item) => item.name === func)) {
-        const projectPath = path.join(workspaceFolder, projectConfig.import.src);
-
-        const relativePath = path.relative(projectPath, filePath);
+        const relativePath = path.relative(workspaceFolder, filePath);
         completionDictionary.push({ name: func, path: relativePath });
       }
     });
@@ -150,9 +147,8 @@ export function activate(context: vscode.ExtensionContext) {
 
   workspaceFolder = workspaceFolders[0].uri.fsPath;
 
-  // 加载配置(=貌似无法直接加载?)
-  loadProjectConfig();
-  projectFolder = path.join(workspaceFolder, projectConfig.import.src);
+  // 加载一下
+  refreshWorkspace();
 
   // 监控init变动
   const documentSaveListener = vscode.workspace.onDidSaveTextDocument((document) => {
@@ -160,17 +156,24 @@ export function activate(context: vscode.ExtensionContext) {
       const filePath = path.join(document.uri.fsPath);
       const { excludes } = projectConfig.import;
       // 跳过非本项目文件
-      if (!filePath.startsWith(projectFolder)) {
+      if (!filePath.startsWith(workspaceFolder)) {
         return;
       }
 
       // 跳过忽略的文件夹
-      const folders = filePath.replace(projectFolder, "").split("\\");
+      const folders = filePath.replace(workspaceFolder, "").split("\\");
       for (const folder of folders) {
         if (excludes.includes(folder)) {
           return;
         }
+
+        // 跳过以 . 或 _ 开头的文件夹
+        if (folder.startsWith(".") || folder.startsWith("_")) {
+          return;
+        }
       }
+
+      // 跳过 . _开头的文件夹
 
       if (updateFunctionStore(filePath)) {
         rebuildCompletionDictionary();
@@ -193,6 +196,8 @@ export function activate(context: vscode.ExtensionContext) {
       const range = new vscode.Range(new vscode.Position(position.line, 0), position);
       const text = document.getText(range);
 
+      const { relative } = projectConfig.import;
+
       const completionItems: vscode.CompletionItem[] = completionDictionary
         .filter((item) => item.name.startsWith(text))
         .map((item, idx) => {
@@ -200,22 +205,36 @@ export function activate(context: vscode.ExtensionContext) {
           completionItem.detail = item.path;
 
           // 这是__int__.py 所在位置
-          const funcPath = path.join(projectFolder, item.path);
+          const funcPath = path.join(workspaceFolder, item.path);
 
-          // 这是当前文档相对于要导入函数的路径
-          const relativePath = path.relative(document.uri.fsPath, funcPath);
+          let tip = "";
 
-          // 处理 `..\\` 和反斜杠
-          let result = relativePath.replace(/\\/g, "/");
-          // 移除 `__init__.py` 部分
-          result = result.replace(/\/__init__\.py$/, "");
+          if (relative) {
+            // 这是当前文档相对于要导入函数的路径
+            const relativePath = path.relative(document.uri.fsPath, funcPath);
+            // 处理反斜杠
+            let result = relativePath.replace(/\\/g, "/");
+            // 移除 `__init__.py` 部分
+            result = result.replace(/\/__init__\.py$/, "");
 
-          result = result.replace(/\.\.\//g, ".").replace(/\//g, ".");
-          if (!result.startsWith(".")) {
-            result = "." + result;
+            result = result.replace(/\.\.\//g, ".").replace(/\//g, ".");
+            if (!result.startsWith(".")) {
+              result = "." + result;
+            }
+            tip = `from ${result} import ${item.name}`;
+          } else {
+            // 这是函数路径基于项目路径的相对值
+            const relativePath = funcPath.replace(workspaceFolder, "");
+            // 处理反斜杠
+            let result = relativePath.replace(/\\/g, "/");
+            // 移除 `__init__.py` 部分
+            result = result.replace(/\/__init__\.py$/, "");
+            // 去掉前面多余的/
+            result = result.replace("/", "");
+            // 中间的路径/ 全部替换为.
+            result = result.replace(/\.\.\//g, ".").replace(/\//g, ".");
+            tip = `from ${result} import ${item.name}`;
           }
-
-          const tip = `from ${result} import ${item.name}`;
 
           completionItem.documentation = tip;
           completionItem.insertText = tip;
